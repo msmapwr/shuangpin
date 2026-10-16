@@ -44,7 +44,6 @@ import {
   FINALS,
   INITIALS,
   lessons,
-  questionsFor,
   makeQueue,
   type LessonId,
   type Question,
@@ -55,8 +54,16 @@ import {
   parseProgress,
   localDay,
   accuracy,
+  mergeProgress,
+  MAX_IMPORT_BYTES,
   type Progress,
 } from "./progress.ts";
+import {
+  groupsFor,
+  filterQuestions,
+  parseCustomWords,
+  MAX_CUSTOM_WORDS,
+} from "./training.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) =>
   document.querySelector<T>(s)!;
@@ -111,6 +118,10 @@ const icon = (name: string, cls = "") =>
   `<i data-lucide="${name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()}" class="${cls}" aria-hidden="true"></i>`;
 let progress: Progress = emptyProgress(),
   storageError = "";
+const selectedGroups: Partial<Record<LessonId, string>> = {};
+let pendingImport: Progress | null = null;
+let dialogEpoch = 0;
+let importReadSerial = 0;
 try {
   progress = parseProgress(localStorage.getItem(STORAGE_KEY));
 } catch {
@@ -142,7 +153,12 @@ motion.add("(prefers-reduced-motion: no-preference)", () => {
   canAnimate = true;
   return () => {
     canAnimate = false;
-    gsap.globalTimeline.clear();
+    animation?.revert();
+    animation = undefined;
+    gsap.killTweensOf(".question-content,.answer-slots");
+    gsap.set(".question-content,.answer-slots", {
+      clearProps: "transform,opacity,visibility",
+    });
   };
 });
 let audio: AudioContext | undefined;
@@ -194,11 +210,12 @@ function lesson() {
   return lessons.find((l) => l.id === lessonId)!;
 }
 function pool() {
+  if (lessonId === "custom") return progress.customWords;
   return lessonId === "review"
     ? Object.values(progress.mistakes)
         .sort((a, b) => b.count - a.count)
         .map((m) => m.question)
-    : questionsFor(lessonId);
+    : filterQuestions(lessonId, selectedGroups[lessonId] ?? "all");
 }
 function startRound() {
   queue = makeQueue(pool(), progress.settings.count, progress.settings.random);
@@ -216,6 +233,7 @@ function startRound() {
   message = "";
   roundSaved = false;
   lastKey = "";
+  lastWrong = false;
 }
 function pause() {
   if (phase === "running" || phase === "ready") {
@@ -281,6 +299,7 @@ function enterKey(key: string) {
   lastWrong = key !== current().answer[typed.length];
   if (lastWrong) {
     questionWrong = true;
+    streak = 0;
     message = `按键 ${key.toUpperCase()} 不匹配，再试一次。${progress.settings.hints || revealed ? `当前需要 ${current().answer[typed.length].toUpperCase()} 键。` : "可以点击「显示提示」查看键位。"}`;
     const q = current();
     const previous = progress.mistakes[q.id];
@@ -362,12 +381,129 @@ function keyboardHTML(reference = false) {
 function navItem(id: string, label: string, name: string, count = "") {
   return `<button class="nav-item ${page === id ? "active" : ""}" data-page="${id}">${icon(name)}<span>${label}</span>${count ? `<span class="nav-count">${count}</span>` : ""}</button>`;
 }
+function trainingContextHTML() {
+  const groups = groupsFor(lessonId);
+  return `<div class="training-context">${groups.length > 1 ? `<label for="training-group">练习范围<select id="training-group">${groups.map((g) => `<option value="${g.id}" ${(selectedGroups[lessonId] ?? "all") === g.id ? "selected" : ""}>${g.name}</option>`).join("")}</select></label>` : `<span>${lessonId === "custom" ? "我的词库" : "错题专项"}</span>`}<span class="pool-count">${pool().length} 个不同题目${lessonId === "custom" ? '<button class="inline-link" data-page="library">管理词库</button>' : ""}</span></div>`;
+}
+function applyGroup(groupId: string) {
+  selectedGroups[lessonId] = groupId;
+  startRound();
+  render();
+}
+function libraryRows(query = "") {
+  const rows = progress.customWords.filter((q) =>
+    `${q.label} ${q.pinyin} ${q.answer}`.includes(query.trim().toLowerCase()),
+  );
+  return rows.length
+    ? `<div class="table-scroll"><table><thead><tr><th>词组</th><th>拼音</th><th>双拼编码</th><th>操作</th></tr></thead><tbody>${rows.map((q) => `<tr><td><strong>${esc(q.label)}</strong></td><td>${esc(q.pinyin)}</td><td><kbd>${esc(q.answer.toUpperCase())}</kbd></td><td><button class="word-delete" data-action="delete-word" data-word-id="${esc(q.id)}" aria-label="删除词组${esc(q.label)}">${icon("X")} 删除</button></td></tr>`).join("")}</tbody></table></div>`
+    : `<div class="empty-state compact">${icon("BookOpen")}<h2>${progress.customWords.length ? "没有找到这个词组" : "把常用的词，练成习惯。"}</h2><p>${progress.customWords.length ? "试试其他汉字、拼音或双拼编码。" : "添加词组和拼音，双键会自动生成小鹤双拼编码。"}</p>${progress.customWords.length ? "" : '<button class="primary-button" data-action="add-words">添加第一组词</button>'}</div>`;
+}
+function libraryHTML() {
+  return `<div class="page-heading"><div><div class="heading-kicker">练习你真正会用到的词</div><h1>你的词，你的节奏。</h1><p>常用名字、工作用语、喜欢的词句，都可以成为练习内容。</p></div><div class="page-actions"><button class="secondary-button" data-action="add-words">${icon("BookOpen")} 添加词组</button><button class="primary-button" data-lesson="custom" ${progress.customWords.length ? "" : "disabled"}>${icon("Keyboard")} 开始练习</button></div></div><div class="records-content library-content"><section class="library-intro"><div><h2>我的词库 <span class="word-count">${progress.customWords.length} / ${MAX_CUSTOM_WORDS}</span></h2><p>拼音由你指定，避免多音字读音不合预期。词库会随学习数据一起导出。</p></div><label class="library-search" for="word-search"><span>搜索词组</span><input type="search" id="word-search" placeholder="汉字、拼音或双拼编码" autocomplete="off"></label></section><section class="info-panel" id="library-rows">${libraryRows()}</section><p class="library-note">删除词组前会先确认；已经产生的学习记录与错题会保留。</p></div>`;
+}
+function showFormError(id: string, text: string) {
+  const error = $(id);
+  if (!error) return;
+  error.textContent = text;
+  error.hidden = false;
+  error.focus();
+}
+function addWords() {
+  dialogHTML(
+    "把常用的词，加进练习",
+    `<form id="words-form"><p class="dialog-copy">每行填写一个词组，用竖线分隔汉字与拼音。每个词组 2～8 字，每字一个无声调拼音。</p><label class="words-label" for="words-text">词组与拼音</label><textarea id="words-text" name="words" rows="7" maxlength="32000" aria-describedby="words-help words-error" placeholder="你好 | ni hao&#10;绿色 | lv se&#10;小鹤双拼 | xiao he shuang pin" required></textarea><p class="field-help" id="words-help">音节用空格分隔，ü 可以写 v。一次最多 200 行，相同词组与拼音会自动去重。</p><p id="words-error" class="form-error" role="alert" tabindex="-1" hidden></p><button class="primary-button full-width" type="submit">校验并加入词库</button></form>`,
+  );
+}
+/** Commit only after a successful write; a failed quota check cannot erase memory. */
+function commitCandidate(next: Progress, recovery = false) {
+  if (storageError.startsWith("无法读取") && !recovery)
+    throw new Error(
+      "现有学习数据无法读取，请先通过「导入备份」恢复。原数据不会被覆盖。",
+    );
+  try {
+    if (recovery && storageError.startsWith("无法读取")) {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw !== null)
+        localStorage.setItem(`${STORAGE_KEY}-recovery-${Date.now()}`, raw);
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    throw new Error(
+      "浏览器未能保存数据，原学习记录已保留。请检查存储权限或剩余空间后重试。",
+    );
+  }
+  progress = next;
+  storageError = "";
+}
+function showImport() {
+  pendingImport = null;
+  dialogHTML(
+    "恢复你的学习积累",
+    `<p class="dialog-copy">选择双键导出的 JSON 文件。先核对摘要，再合并到本机；重复导入不会重复累计历史。</p><label class="backup-file-label" for="backup-file">选择备份文件<input id="backup-file" type="file" accept=".json,application/json" aria-describedby="import-help import-error"></label><p class="field-help" id="import-help">文件最大 2 MB，仅在你的浏览器内读取。</p><p class="form-error" id="import-error" role="alert" tabindex="-1" hidden></p><div id="import-preview" aria-live="polite"></div><label class="setting-toggle"><span><strong>同时恢复备份中的练习设置</strong><small>不勾选时保留本机的题数、目标和模式</small></span><input id="restore-settings" type="checkbox"></label><p class="dialog-note">历史合并后保留最近 500 轮。错题次数取较大值，旧备份可能带回已掌握的错题。${storageError.startsWith("无法读取") ? "当前原数据无法读取，恢复前会在本机另存一份原始副本。" : ""}</p><button class="primary-button full-width" id="confirm-import" data-action="confirm-import" disabled>确认合并</button>`,
+  );
+}
+async function readImport(file: File) {
+  const epoch = dialogEpoch;
+  const request = ++importReadSerial;
+  pendingImport = null;
+  $("#import-error").hidden = true;
+  $<HTMLButtonElement>("#confirm-import").disabled = true;
+  $("#import-preview").textContent = "正在检查备份…";
+  try {
+    if (file.size > MAX_IMPORT_BYTES)
+      throw new Error("备份文件超过 2 MB，请选择双键导出的 JSON 文件");
+    const data = parseProgress(await file.text());
+    if (
+      epoch !== dialogEpoch ||
+      request !== importReadSerial ||
+      !$<HTMLDialogElement>("#dialog").open
+    )
+      return;
+    const combined = mergeProgress(progress, data);
+    pendingImport = data;
+    $("#import-preview").innerHTML =
+      `<div class="import-summary"><strong>${esc(file.name)}</strong><dl><div><dt>备份中的历史</dt><dd>${data.records.length} 轮</dd></div><div><dt>新增历史</dt><dd>${combined.records.filter((r) => !progress.records.some((p) => p.id === r.id)).length} 轮</dd></div><div><dt>备份中的错题</dt><dd>${Object.keys(data.mistakes).length} 题</dd></div><div><dt>备份中的自定义词</dt><dd>${data.customWords.length} 个</dd></div></dl><p>确认前，本机学习数据不会改变。</p></div>`;
+    $<HTMLButtonElement>("#confirm-import").disabled = false;
+  } catch (e) {
+    if (
+      epoch !== dialogEpoch ||
+      request !== importReadSerial ||
+      !$<HTMLDialogElement>("#dialog").open
+    )
+      return;
+    $("#import-preview").textContent = "";
+    showFormError("#import-error", (e as Error).message);
+  }
+}
+function importData() {
+  if (!pendingImport) return;
+  try {
+    // Reconcile another tab's completed work rather than overwriting it.
+    let latest = progress;
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw !== null && !storageError.startsWith("无法读取"))
+      latest = mergeProgress(progress, parseProgress(raw));
+    const next = mergeProgress(
+      latest,
+      pendingImport,
+      $<HTMLInputElement>("#restore-settings").checked,
+    );
+    commitCandidate(next, true);
+    pendingImport = null;
+    $<HTMLDialogElement>("#dialog").close();
+    page = "stats";
+    render();
+    toast("备份已合并，学习记录已保存");
+  } catch (e) {
+    showFormError("#import-error", (e as Error).message);
+  }
+}
 function render() {
   animation?.revert();
   const allDone = progress.records.reduce((sum, r) => sum + r.total, 0);
   $("#app").innerHTML =
-    `<a class="skip-link" href="#main">跳到主内容</a><aside class="sidebar"><a class="brand" href="#practice" aria-label="双键首页"><span class="brand-mark"><span></span><span></span></span><span>双键<span class="brand-sub">让双拼，成为习惯</span></span></a><div class="nav-group-label">学习空间</div><nav aria-label="主导航">${navItem("practice", "开始练习", "Keyboard")}${navItem("reference", "键位速查", "BookOpen")}${navItem("review", "错题本", "Bookmark", String(Object.keys(progress.mistakes).length))}${navItem("stats", "学习记录", "ChartNoAxesCombined")}</nav><div class="sidebar-course"><div class="sidebar-course-title">循序渐进，一步一步来</div><div class="course-line"><span style="width:${Math.min((allDone / 200) * 100, 100)}%"></span></div><p>已完成 ${allDone} 题练习</p></div><div class="sidebar-bottom"><div class="small-tip">${icon("Sprout")}<p>每天一点点，<br>让手指记住每个键位。</p></div><button class="nav-item" data-action="help">${icon("CircleHelp")}<span>入门指南</span>${icon("ArrowUpRight", "small")}</button><button class="nav-item" data-action="settings">${icon("Settings2")}<span>练习设置</span></button><div class="local-status"><span></span> 学习数据仅保存在本机</div></div></aside>
-  <div class="workspace"><header class="topbar"><div class="breadcrumb">我的学习空间 ${icon("ChevronRight")}<span>${({ practice: "开始练习", reference: "键位速查", review: "错题本", stats: "学习记录" } as Record<string, string>)[page]}</span></div><div class="topbar-right"><span class="scheme-indicator"><span></span>小鹤双拼</span><button class="avatar" data-action="settings" aria-label="打开个人练习设置">双</button></div></header><main id="main" tabindex="-1"><div id="storage-warning" role="status" class="storage-warning" ${storageError ? "" : "hidden"}>${esc(storageError)}</div>${page === "practice" ? practiceHTML() : page === "reference" ? referenceHTML() : page === "review" ? reviewHTML() : statsHTML()}</main><footer class="footer"><span>双键<span class="footer-dot">·</span>每一次敲击，都离熟练更近一点。</span><a href="https://github.com/msmapwr/shuangpin" target="_blank" rel="noopener noreferrer">${icon("Github")} 开源项目</a></footer></div><div id="toast" role="status" class="toast" hidden></div><dialog id="dialog" aria-labelledby="dialog-title"></dialog>`;
+    `<a class="skip-link" href="#main">跳到主内容</a><aside class="sidebar"><a class="brand" href="#practice" aria-label="双键首页"><span class="brand-mark"><span></span><span></span></span><span>双键<span class="brand-sub">让双拼，成为习惯</span></span></a><div class="nav-group-label">学习空间</div><nav aria-label="主导航">${navItem("practice", "开始练习", "Keyboard")}${navItem("reference", "键位速查", "BookOpen")}${navItem("review", "错题本", "Bookmark", String(Object.keys(progress.mistakes).length))}${navItem("stats", "学习记录", "ChartNoAxesCombined")}${navItem("library", "我的词库", "BookOpen")}</nav><div class="sidebar-course"><div class="sidebar-course-title">循序渐进，一步一步来</div><div class="course-line"><span style="width:${Math.min((allDone / 200) * 100, 100)}%"></span></div><p>已完成 ${allDone} 题练习</p></div><div class="sidebar-bottom"><div class="small-tip">${icon("Sprout")}<p>每天一点点，<br>让手指记住每个键位。</p></div><button class="nav-item" data-action="help">${icon("CircleHelp")}<span>入门指南</span>${icon("ArrowUpRight", "small")}</button><button class="nav-item" data-action="settings">${icon("Settings2")}<span>练习设置</span></button><div class="local-status"><span></span> 学习数据仅保存在本机</div></div></aside>
+  <div class="workspace"><header class="topbar"><div class="breadcrumb">我的学习空间 ${icon("ChevronRight")}<span>${({ practice: "开始练习", reference: "键位速查", review: "错题本", stats: "学习记录", library: "我的词库" } as Record<string, string>)[page]}</span></div><div class="topbar-right"><span class="scheme-indicator"><span></span>小鹤双拼</span><button class="avatar" data-action="settings" aria-label="打开个人练习设置">双</button></div></header><main id="main" tabindex="-1"><div id="storage-warning" role="status" class="storage-warning" ${storageError ? "" : "hidden"}>${esc(storageError)}</div>${page === "practice" ? practiceHTML() : page === "reference" ? referenceHTML() : page === "review" ? reviewHTML() : page === "library" ? libraryHTML() : statsHTML()}</main><footer class="footer"><span>双键<span class="footer-dot">·</span>每一次敲击，都离熟练更近一点。</span><a href="https://github.com/msmapwr/shuangpin" target="_blank" rel="noopener noreferrer">${icon("Github")} 开源项目</a></footer></div><div id="toast" role="status" class="toast" hidden></div><dialog id="dialog" aria-labelledby="dialog-title"></dialog>`;
   createIcons({ icons });
   if (page === "practice") renderPracticeState();
   if (canAnimate) {
@@ -400,8 +536,8 @@ function practiceHTML() {
     .join(
       "",
     )}<button class="lesson-tab ${!["initials", "finals"].includes(lessonId) ? "selected" : ""}" data-lesson="${["initials", "finals"].includes(lessonId) ? "words" : lessonId}" aria-pressed="${!["initials", "finals"].includes(lessonId)}">${["initials", "finals"].includes(lessonId) ? "词组练习" : lesson().title}</button></div><button class="icon-button" data-action="settings" aria-label="练习设置">${icon("SlidersHorizontal")}</button></div>
-  <div class="session-stats"><div><span class="stat-label">本轮进度</span><strong><span id="round-progress">0</span><small> / ${queue.length}</small></strong></div><div><span class="stat-label">准确率</span><strong id="accuracy">—</strong></div><div><span class="stat-label">练习用时</span><strong id="timer">00:00</strong></div><div><span class="stat-label">连续答对</span><strong><span id="streak">0</span><small> 题</small></strong></div></div><div class="round-track"><div id="round-fill"></div></div>
-  ${queue.length ? `<div class="exercise"><div class="exercise-topline"><span class="lesson-caption">${icon(lesson().icon)} ${lesson().title}</span><button class="mode-switch" data-action="mode" aria-pressed="${!progress.settings.hints}">${icon(progress.settings.hints ? "Eye" : "EyeOff")} ${progress.settings.hints ? "引导模式" : "盲打模式"} ${icon("ChevronDown")}</button></div><div class="question-content"></div><div class="answer-entry"><label class="sr-only" for="typing-input">输入当前题目的小鹤双拼编码</label><input id="typing-input" class="typing-input" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="input-help input-feedback" aria-label="输入当前题目的小鹤双拼编码"><div class="answer-slots" aria-hidden="true"></div></div><p id="input-help" class="input-help">切换到英文输入法，按下对应字母键</p><p id="input-feedback" class="input-feedback" role="status" aria-live="polite"></p><div class="exercise-controls"><button class="text-button" data-action="hint">${icon("Lightbulb")} 显示提示</button><span class="control-divider"></span><button class="text-button" data-action="pause" id="pause-button">${icon("Pause")} 暂停</button><span class="control-divider"></span><button class="text-button" data-action="restart">${icon("RotateCcw")} 重新开始</button></div></div>` : `<div class="empty-state">${icon("CircleCheck")}<h2>暂时没有需要复习的题目</h2><p>练习中出现的错题会自动收集到这里。</p><button class="primary-button" data-lesson="initials">开始声母练习</button></div>`}
+  ${trainingContextHTML()}<div class="session-stats"><div><span class="stat-label">本轮进度</span><strong><span id="round-progress">0</span><small> / ${queue.length}</small></strong></div><div><span class="stat-label">准确率</span><strong id="accuracy">—</strong></div><div><span class="stat-label">练习用时</span><strong id="timer">00:00</strong></div><div><span class="stat-label">连续答对</span><strong><span id="streak">0</span><small> 题</small></strong></div></div><div class="round-track"><div id="round-fill"></div></div>
+  ${queue.length ? `<div class="exercise"><div class="exercise-topline"><span class="lesson-caption">${icon(lesson().icon)} ${lesson().title}</span><button class="mode-switch" data-action="mode" aria-pressed="${!progress.settings.hints}">${icon(progress.settings.hints ? "Eye" : "EyeOff")} ${progress.settings.hints ? "引导模式" : "盲打模式"} ${icon("ChevronDown")}</button></div><div class="question-content"></div><div class="answer-entry"><label class="sr-only" for="typing-input">输入当前题目的小鹤双拼编码</label><input id="typing-input" class="typing-input" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="input-help input-feedback" aria-label="输入当前题目的小鹤双拼编码"><div class="answer-slots" aria-hidden="true"></div></div><p id="input-help" class="input-help">切换到英文输入法，按下对应字母键</p><p id="input-feedback" class="input-feedback" role="status" aria-live="polite"></p><div class="exercise-controls"><button class="text-button" data-action="hint">${icon("Lightbulb")} 显示提示</button><span class="control-divider"></span><button class="text-button" data-action="pause" id="pause-button">${icon("Pause")} 暂停</button><span class="control-divider"></span><button class="text-button" data-action="restart">${icon("RotateCcw")} 重新开始</button></div></div>` : `<div class="empty-state">${icon("CircleCheck")}<h2>${lessonId === "custom" ? "先添加你想练习的词组" : "暂时没有需要复习的题目"}</h2><p>${lessonId === "custom" ? "在我的词库填写词组与拼音，就能生成专属练习。" : "练习中出现的错题会自动收集到这里。"}</p><button class="primary-button" ${lessonId === "custom" ? 'data-page="library"' : 'data-lesson="initials"'}>${lessonId === "custom" ? "前往我的词库" : "开始声母练习"}</button></div>`}
   <div class="keyboard-area"><div class="keyboard-heading"><span>键位就在手边</span><div class="keyboard-legend"><span><b class="legend-initial"></b>声母</span><span><b class="legend-final"></b>韵母</span><button data-page="reference" aria-label="查看完整键位图">${icon("Expand")}</button></div></div>${keyboardHTML()}<div class="keyboard-foot"><span>${icon("Info")} 也可以点击屏幕键盘练习</span><span><kbd>Esc</kbd> 暂停 / 继续</span></div></div></section>
   <section class="next-section"><div class="section-title"><h2>打好基础，再向前一步</h2><span>按自己的节奏学习</span></div><div class="next-lessons">${lessons
     .slice(2, 5)
@@ -433,7 +569,7 @@ function renderPracticeState() {
   const q = current(),
     hint = progress.settings.hints || revealed;
   $(".question-content").innerHTML =
-    `<p class="question-instruction">${phase === "paused" ? "练习已暂停" : lessonId === "initials" ? "这个声母，对应哪个键？" : lessonId === "finals" ? "这个韵母，对应哪个键？" : "用小鹤双拼，输入下面的" + (lessonId === "words" ? "词组" : "音节")}</p><div class="question-label ${q.label.length > 5 ? "long" : ""}">${phase === "paused" ? icon("Pause") : esc(q.label)}</div><p class="question-pinyin">${phase === "paused" ? "准备好了就继续吧" : q.label !== q.pinyin ? esc(q.pinyin) : lessonId === "initials" ? "声母" : lessonId === "finals" ? "韵母" : "零声母音节"}</p>`;
+    `<p class="question-instruction">${phase === "paused" ? "练习已暂停" : lessonId === "initials" ? "这个声母，对应哪个键？" : lessonId === "finals" ? "这个韵母，对应哪个键？" : "用小鹤双拼，输入下面的" + (lessonId === "words" || lessonId === "custom" ? "词组" : "音节")}</p><div class="question-label ${q.label.length > 5 ? "long" : ""}">${phase === "paused" ? icon("Pause") : esc(q.label)}</div><p class="question-pinyin">${phase === "paused" ? "准备好了就继续吧" : q.label !== q.pinyin ? esc(q.pinyin) : lessonId === "initials" ? "声母" : lessonId === "finals" ? "韵母" : "零声母音节"}</p>`;
   $(".answer-slots").innerHTML = [...q.answer]
     .map(
       (key, i) =>
@@ -505,7 +641,7 @@ function statsHTML() {
     return { label: `${d.getMonth() + 1}/${d.getDate()}`, count };
   });
   const max = Math.max(...days.map((d) => d.count), 1);
-  return `<div class="page-heading"><div><div class="heading-kicker">每一点积累，都有迹可循</div><h1>看见自己的进步。</h1><p>记录来自已完成的练习轮次，仅保存在当前浏览器。</p></div><button class="secondary-button" data-action="export">${icon("Download")} 导出学习数据</button></div><div class="records-content"><div class="overview-stats"><section><span>累计练习</span><strong>${total}<small> 题</small></strong></section><section><span>按键准确率</span><strong>${totalAttempts ? accuracy(totalCorrect, totalAttempts) + "%" : "—"}</strong></section><section><span>练习天数</span><strong>${dates.size}<small> 天</small></strong></section><section><span>有效练习时间</span><strong>${Math.round(records.reduce((s, r) => s + r.seconds, 0) / 60)}<small> 分钟</small></strong></section></div><section class="info-panel activity-panel"><div class="rail-title"><h2>近七天的练习</h2><span class="muted">已完成题数</span></div><div class="activity-chart" role="img" aria-label="${days.map((d) => d.label + "：" + d.count + "题").join("；")}">${days.map((d) => `<div class="chart-column"><span>${d.count}</span><div class="chart-bar-space"><div class="chart-bar" style="height:${(d.count / max) * 100}%"></div></div><span>${d.label}</span></div>`).join("")}</div></section><section class="info-panel"><div class="rail-title"><h2>练习历史</h2><span class="muted">最近 ${Math.min(records.length, 30)} 轮</span></div>${
+  return `<div class="page-heading"><div><div class="heading-kicker">每一点积累，都有迹可循</div><h1>看见自己的进步。</h1><p>记录来自已完成的练习轮次，仅保存在当前浏览器。</p></div><div class="page-actions"><button class="secondary-button" data-action="import">${icon("BookOpen")} 导入备份</button><button class="secondary-button" data-action="export">${icon("Download")} 导出学习数据</button></div></div><div class="records-content"><div class="overview-stats"><section><span>累计练习</span><strong>${total}<small> 题</small></strong></section><section><span>按键准确率</span><strong>${totalAttempts ? accuracy(totalCorrect, totalAttempts) + "%" : "—"}</strong></section><section><span>练习天数</span><strong>${dates.size}<small> 天</small></strong></section><section><span>有效练习时间</span><strong>${Math.round(records.reduce((s, r) => s + r.seconds, 0) / 60)}<small> 分钟</small></strong></section></div><section class="info-panel activity-panel"><div class="rail-title"><h2>近七天的练习</h2><span class="muted">已完成题数</span></div><div class="activity-chart" role="img" aria-label="${days.map((d) => d.label + "：" + d.count + "题").join("；")}">${days.map((d) => `<div class="chart-column"><span>${d.count}</span><div class="chart-bar-space"><div class="chart-bar" style="height:${(d.count / max) * 100}%"></div></div><span>${d.label}</span></div>`).join("")}</div></section><section class="info-panel"><div class="rail-title"><h2>练习历史</h2><span class="muted">最近 ${Math.min(records.length, 30)} 轮</span></div>${
     records.length
       ? `<div class="table-scroll"><table><thead><tr><th>练习时间</th><th>内容</th><th>题数</th><th>准确率</th><th>用时</th><th>键 / 分钟</th></tr></thead><tbody>${records
           .slice(0, 30)
@@ -518,6 +654,7 @@ function statsHTML() {
   }</section></div>`;
 }
 function dialogHTML(title: string, body: string) {
+  dialogEpoch++;
   if (phase === "running") {
     elapsed = seconds();
     phase = "paused";
@@ -584,7 +721,11 @@ document.addEventListener("click", (e) => {
   }
   if (target.dataset.lesson) {
     const next = target.dataset.lesson as LessonId;
-    if (next !== lessonId && attempts && phase !== "done") {
+    if (
+      (next !== lessonId || page !== "practice") &&
+      attempts &&
+      phase !== "done"
+    ) {
       dialogHTML(
         "切换练习内容？",
         `<p class="dialog-copy">切换后会开始新的一轮，本轮尚未完成的进度不会计入历史；错题会保留。</p><div class="dialog-actions"><button class="secondary-button" data-action="close-dialog">保留当前练习</button><button class="primary-button" data-action="confirm-lesson" data-next="${next}">切换练习</button></div>`,
@@ -610,6 +751,46 @@ document.addEventListener("click", (e) => {
     return;
   }
   switch (target.dataset.action) {
+    case "add-words":
+      addWords();
+      break;
+    case "import":
+      showImport();
+      break;
+    case "confirm-import":
+      importData();
+      break;
+    case "confirm-group":
+      $<HTMLDialogElement>("#dialog").close();
+      applyGroup(target.dataset.group!);
+      break;
+    case "delete-word": {
+      const q = progress.customWords.find(
+        (q) => q.id === target.dataset.wordId,
+      );
+      if (q)
+        dialogHTML(
+          "删除这个词组？",
+          `<p class="dialog-copy">将从词库中移除「${esc(q.label)}」。当前轮次、学习历史与错题记录都会保留。</p><p id="delete-error" class="form-error" role="alert" tabindex="-1" hidden></p><div class="dialog-actions"><button class="secondary-button" data-action="close-dialog">保留词组</button><button class="primary-button" data-action="confirm-delete-word" data-word-id="${esc(q.id)}">确认删除</button></div>`,
+        );
+      break;
+    }
+    case "confirm-delete-word": {
+      try {
+        commitCandidate({
+          ...progress,
+          customWords: progress.customWords.filter(
+            (q) => q.id !== target.dataset.wordId,
+          ),
+        });
+        $<HTMLDialogElement>("#dialog").close();
+        render();
+        toast("词组已删除");
+      } catch (e) {
+        showFormError("#delete-error", (e as Error).message);
+      }
+      break;
+    }
     case "help":
       help();
       break;
@@ -655,6 +836,34 @@ document.addEventListener("click", (e) => {
   }
 });
 document.addEventListener("submit", (e) => {
+  if ((e.target as HTMLElement).id === "words-form") {
+    e.preventDefault();
+    try {
+      const additions = parseCustomWords(
+        String(new FormData(e.target as HTMLFormElement).get("words") ?? ""),
+      );
+      const incoming = emptyProgress();
+      incoming.customWords = additions;
+      let latest = progress;
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw !== null && !storageError.startsWith("无法读取"))
+        latest = mergeProgress(progress, parseProgress(raw));
+      const candidate = mergeProgress(latest, incoming);
+      const added = candidate.customWords.length - progress.customWords.length;
+      commitCandidate(candidate);
+      $<HTMLDialogElement>("#dialog").close();
+      page = "library";
+      render();
+      toast(added ? `已加入 ${added} 个词组` : "这些词组已经在词库中");
+    } catch (e) {
+      showFormError("#words-error", (e as Error).message);
+      $<HTMLTextAreaElement>("#words-text").setAttribute(
+        "aria-invalid",
+        "true",
+      );
+    }
+    return;
+  }
   if ((e.target as HTMLElement).id !== "settings-form") return;
   e.preventDefault();
   const form = new FormData(e.target as HTMLFormElement);
@@ -672,6 +881,11 @@ document.addEventListener("submit", (e) => {
 });
 document.addEventListener("input", (e) => {
   const input = e.target as HTMLInputElement;
+  if (input.id === "word-search") {
+    $("#library-rows").innerHTML = libraryRows(input.value);
+    createIcons({ icons });
+    return;
+  }
   if (input.id !== "typing-input" || (e as InputEvent).isComposing) return;
   if ((e as InputEvent).inputType === "deleteContentBackward") {
     backspace();
@@ -685,6 +899,23 @@ document.addEventListener("input", (e) => {
     return;
   }
   for (const c of val) enterKey(c);
+});
+document.addEventListener("change", (e) => {
+  const input = e.target as HTMLInputElement;
+  if (input.id === "backup-file" && input.files?.[0]) {
+    void readImport(input.files[0]);
+    return;
+  }
+  if (input.id === "training-group") {
+    const groupId = input.value;
+    if (attempts && phase !== "done") {
+      input.value = selectedGroups[lessonId] ?? "all";
+      dialogHTML(
+        "切换练习范围？",
+        `<p class="dialog-copy">新的一轮将只练习所选内容。本轮尚未完成的进度不会计入历史，错题会保留。</p><div class="dialog-actions"><button class="secondary-button" data-action="close-dialog">保留当前范围</button><button class="primary-button" data-action="confirm-group" data-group="${esc(groupId)}">切换范围</button></div>`,
+      );
+    } else applyGroup(groupId);
+  }
 });
 document.addEventListener("compositionend", (e) => {
   if ((e.target as HTMLElement).id === "typing-input") {
@@ -733,7 +964,8 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("popstate", () => {
   const hash = location.hash.slice(1);
-  if (["practice", "reference", "review", "stats"].includes(hash)) nav(hash);
+  if (["practice", "reference", "review", "stats", "library"].includes(hash))
+    nav(hash);
 });
 window.addEventListener("beforeunload", (e) => {
   if (attempts && phase !== "done") {
@@ -742,6 +974,8 @@ window.addEventListener("beforeunload", (e) => {
 });
 setInterval(refreshStats, 500);
 startRound();
-if (["reference", "review", "stats"].includes(location.hash.slice(1)))
+if (
+  ["reference", "review", "stats", "library"].includes(location.hash.slice(1))
+)
   page = location.hash.slice(1);
 render();

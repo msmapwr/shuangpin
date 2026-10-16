@@ -64,7 +64,7 @@ export function encodePhrase(pinyin: string): string {
   return pinyin.trim().split(/\s+/).map(encodeSyllable).join("");
 }
 export type LessonId =
-  "initials" | "finals" | "zero" | "syllables" | "words" | "review";
+  "initials" | "finals" | "zero" | "syllables" | "words" | "review" | "custom";
 export interface Question {
   id: string;
   label: string;
@@ -121,6 +121,13 @@ export const lessons: Lesson[] = [
     subtitle: "把不熟悉的，变成熟悉的",
     icon: "RotateCcw",
     color: "orange",
+  },
+  {
+    id: "custom",
+    title: "自定义词组",
+    subtitle: "练习自己常用的词",
+    icon: "BookOpen",
+    color: "purple",
   },
 ];
 const phraseData = [
@@ -258,6 +265,7 @@ export const syllables: Question[] = singleData.map(([label, pinyin]) => ({
   note: "一个声母键 + 一个韵母键，组成一个音节。",
 }));
 export function questionsFor(id: LessonId): Question[] {
+  if (id === "custom" || id === "review") return [];
   if (id === "initials")
     return Object.entries(INITIALS).map(([pinyin, answer]) => ({
       id: `initial-${pinyin}`,

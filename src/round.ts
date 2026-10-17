@@ -47,7 +47,7 @@ export function parseRound(
     !groupsFor(s.lessonId).some((g) => g.id === s.group) ||
     !Array.isArray(s.queue) ||
     s.queue.length < 1 ||
-    s.queue.length > 50
+    s.queue.length > (s.lessonId === "article" ? 200 : 50)
   )
     throw new Error("未完成练习内容无效");
   const queue = s.queue.map(readQuestion) as Question[];
@@ -65,6 +65,14 @@ export function parseRound(
       filterQuestions(s.lessonId, s.group, queue).length !== queue.length
     )
       throw new Error("题目不属于当前练习范围");
+  }
+  if (s.lessonId === "article") {
+    const original = filterQuestions("article", s.group);
+    if (
+      original.length !== queue.length ||
+      queue.some((q, i) => q.id !== original[i].id)
+    )
+      throw new Error("短文跟练必须保留完整原文顺序");
   }
   const ints = [
     "index",

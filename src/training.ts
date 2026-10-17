@@ -1,3 +1,4 @@
+import { articles } from "./articles.ts";
 import {
   encodePhrase,
   questionsFor,
@@ -16,6 +17,8 @@ const group = (id: string, name: string, values: string): TrainingGroup => ({
   values: values.split(" "),
 });
 export function groupsFor(id: LessonId): TrainingGroup[] {
+  if (id === "article")
+    return articles.map((a) => ({ id: a.id, name: a.title }));
   const all = { id: "all", name: "全部内容" };
   if (id === "initials")
     return [
@@ -73,6 +76,9 @@ export function groupsFor(id: LessonId): TrainingGroup[] {
     ];
   return [all];
 }
+export function defaultGroup(id: LessonId): string {
+  return groupsFor(id)[0].id;
+}
 export function filterQuestions(
   id: LessonId,
   groupId: string,
@@ -80,6 +86,8 @@ export function filterQuestions(
 ): Question[] {
   const selected = groupsFor(id).find((g) => g.id === groupId);
   if (!selected) throw new Error("练习分组不存在");
+  if (id === "article")
+    return items.filter((q) => q.id.startsWith(`article-${groupId}-`));
   return selected.values
     ? items.filter((q) =>
         selected.values!.includes(id === "words" ? q.label : q.pinyin),

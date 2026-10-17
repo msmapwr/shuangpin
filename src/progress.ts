@@ -1,3 +1,4 @@
+import { articles, articleTokens } from "./articles.ts";
 import {
   lessons,
   questionsFor,
@@ -17,6 +18,7 @@ export interface RecordEntry {
   id: string;
   date: string;
   lesson: LessonId;
+  articleId?: string;
   total: number;
   attempts: number;
   correct: number;
@@ -56,9 +58,14 @@ function shortText(value: unknown, max = 200): value is string {
 function date(value: unknown): value is string {
   return shortText(value, 40) && Number.isFinite(Date.parse(value));
 }
-const builtins = ["initials", "finals", "zero", "syllables", "words"].flatMap(
-  (id) => questionsFor(id as LessonId),
-);
+const builtins = [
+  "initials",
+  "finals",
+  "zero",
+  "syllables",
+  "words",
+  "article",
+].flatMap((id) => questionsFor(id as LessonId));
 export function readQuestion(value: unknown): Question {
   if (
     !object(value) ||
@@ -120,14 +127,26 @@ export function parseProgress(raw: string | null): Progress {
       Number(r.total) < 1 ||
       Number(r.correct) > Number(r.attempts) ||
       Number(r.total) > Number(r.correct) ||
+      (r.lesson === "article"
+        ? !articles.some((a) => a.id === r.articleId)
+        : r.articleId !== undefined) ||
       recordIds.has(r.id)
     )
       throw new Error("练习记录损坏或包含重复编号");
+    if (
+      r.lesson === "article" &&
+      (r.total !==
+        articleTokens(r.articleId as string).filter((t) => t.index !== null)
+          .length ||
+        Number(r.correct) < Number(r.total) * 2)
+    )
+      throw new Error("文章记录与完整原文不一致");
     recordIds.add(r.id);
     data.records.push({
       id: r.id,
       date: r.date,
       lesson: r.lesson as LessonId,
+      ...(r.lesson === "article" ? { articleId: r.articleId as string } : {}),
       total: r.total as number,
       attempts: r.attempts as number,
       correct: r.correct as number,
@@ -204,6 +223,7 @@ export function mergeProgress(
         [
           "date",
           "lesson",
+          "articleId",
           "total",
           "attempts",
           "correct",

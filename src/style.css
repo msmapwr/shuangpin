@@ -3264,3 +3264,196 @@ td {
     animation: none !important;
   }
 }
+/* Full-text practice shares the existing learning desk and five-item navigation. */
+.article-invite {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 22px;
+  background: #fff;
+  border: 1px solid #e5e8f0;
+  border-radius: 16px;
+  margin-top: 24px;
+}
+.article-invite h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+.article-invite p {
+  margin: 0;
+  color: #697189;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.article-invite > button {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.article-catalog-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: #697189;
+  font-size: 13px;
+  line-height: 1.8;
+  margin-bottom: 24px;
+}
+.article-catalog-note svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.article-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+.article-card {
+  background: #fff;
+  border: 1px solid #e5e8f0;
+  border-radius: 18px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.article-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  color: #697189;
+  font-size: 12px;
+}
+.article-number {
+  color: #5664dc;
+  font:
+    24px Georgia,
+    serif;
+}
+.article-card h2 {
+  font-size: 23px;
+  letter-spacing: 0.04em;
+  margin: 22px 0 9px;
+}
+.article-description {
+  color: #697189;
+  font-size: 13px;
+  line-height: 1.8;
+  margin: 0;
+}
+.article-preview {
+  font-size: 16px;
+  line-height: 2;
+  padding-left: 16px;
+  border-left: 2px solid #dfe3ff;
+  margin: 24px 0;
+}
+.article-history {
+  color: #697189;
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: auto;
+  margin-bottom: 16px;
+}
+.article-context {
+  text-align: left;
+  background: #f7f8fc;
+  border: 1px solid #e9ebf2;
+  border-radius: 12px;
+  margin: 16px 0 22px;
+  padding: 16px 20px;
+}
+.article-context-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.article-context-heading h2 {
+  font-size: 14px;
+  margin: 0;
+}
+.article-context-heading > span {
+  color: #5664dc;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.article-passage {
+  position: relative;
+  white-space: pre-wrap;
+  font-size: 18px;
+  line-height: 2.2;
+  letter-spacing: 0.06em;
+  max-height: 158px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 3px 4px;
+  color: #555f78;
+}
+.article-passage .done {
+  color: #26836a;
+}
+.article-passage .current {
+  color: #3d49b8;
+  background: #e1e6ff;
+  box-shadow: 0 2px 0 #5664dc;
+  border-radius: 3px;
+}
+.article-context > p {
+  font-size: 11px;
+  color: #697189;
+  margin: 10px 0 0;
+  line-height: 1.7;
+}
+@media (max-width: 700px) {
+  .article-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .article-card {
+    padding: 22px;
+  }
+  .article-invite {
+    flex-wrap: wrap;
+    padding: 18px;
+    gap: 12px;
+  }
+  .article-invite > div {
+    flex: 1;
+  }
+  .article-invite > button {
+    margin-left: 0;
+  }
+  .article-context {
+    padding: 12px;
+  }
+  .article-passage {
+    font-size: 16px;
+    max-height: 126px;
+  }
+}
+
+.mistake-source {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: #697189;
+  line-height: 1.6;
+}
+
+@media (max-width: 700px) {
+  .article-invite > button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+@media (max-width: 420px) {
+  .training-context.article-training .pool-count {
+    max-width: none;
+    white-space: nowrap;
+  }
+}

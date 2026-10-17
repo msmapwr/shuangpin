@@ -1,3 +1,4 @@
+import { articles, buildArticleQuestions } from "./articles.ts";
 /** Standard Flypy phonetic layout; no shape codes or word abbreviations. */
 export const FINALS: Record<string, string> = {
   a: "a",
@@ -64,7 +65,14 @@ export function encodePhrase(pinyin: string): string {
   return pinyin.trim().split(/\s+/).map(encodeSyllable).join("");
 }
 export type LessonId =
-  "initials" | "finals" | "zero" | "syllables" | "words" | "review" | "custom";
+  | "initials"
+  | "finals"
+  | "zero"
+  | "syllables"
+  | "words"
+  | "review"
+  | "custom"
+  | "article";
 export interface Question {
   id: string;
   label: string;
@@ -128,6 +136,13 @@ export const lessons: Lesson[] = [
     subtitle: "练习自己常用的词",
     icon: "BookOpen",
     color: "purple",
+  },
+  {
+    id: "article",
+    title: "文章跟练",
+    subtitle: "把词组连成完整句子",
+    icon: "BookOpen",
+    color: "blue",
   },
 ];
 const phraseData = [
@@ -264,7 +279,12 @@ export const syllables: Question[] = singleData.map(([label, pinyin]) => ({
   answer: encodeSyllable(pinyin),
   note: "一个声母键 + 一个韵母键，组成一个音节。",
 }));
+export function questionsForArticle(id: string): Question[] {
+  return buildArticleQuestions(id, encodeSyllable);
+}
 export function questionsFor(id: LessonId): Question[] {
+  if (id === "article")
+    return articles.flatMap((a) => questionsForArticle(a.id));
   if (id === "custom" || id === "review") return [];
   if (id === "initials")
     return Object.entries(INITIALS).map(([pinyin, answer]) => ({

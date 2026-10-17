@@ -59,7 +59,7 @@ function date(value: unknown): value is string {
 const builtins = ["initials", "finals", "zero", "syllables", "words"].flatMap(
   (id) => questionsFor(id as LessonId),
 );
-function readQuestion(value: unknown): Question {
+export function readQuestion(value: unknown): Question {
   if (
     !object(value) ||
     !shortText(value.id) ||

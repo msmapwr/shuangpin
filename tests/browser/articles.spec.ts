@@ -36,7 +36,7 @@ test("catalog starts complete sequential text and automatically skips punctuatio
 }) => {
   await setup(page);
   await expect(page.locator('nav[aria-label="主导航"] > button')).toHaveCount(
-    5,
+    6,
   );
   await page.locator('.lesson-tabs [data-page="articles"]').click();
   await expect(page.locator(".article-card")).toHaveCount(4);

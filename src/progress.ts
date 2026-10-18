@@ -1,3 +1,13 @@
+import {
+  emptyCourse,
+  readCourse,
+  readCourseAttempt,
+  getUnit,
+  coursePool,
+  coursePaces,
+  type CourseState,
+  type CourseAttempt,
+} from "./course.ts";
 import { articles, articleTokens } from "./articles.ts";
 import {
   lessons,
@@ -19,6 +29,7 @@ export interface RecordEntry {
   date: string;
   lesson: LessonId;
   articleId?: string;
+  course?: CourseAttempt;
   total: number;
   attempts: number;
   correct: number;
@@ -32,6 +43,7 @@ export interface Mistake {
 }
 export interface Progress {
   version: 1;
+  course: CourseState;
   settings: Settings;
   records: RecordEntry[];
   mistakes: Record<string, Mistake>;
@@ -42,6 +54,7 @@ export const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 export function emptyProgress(): Progress {
   return {
     version: 1,
+    course: emptyCourse(),
     settings: { count: 20, hints: true, random: true, sound: false, goal: 40 },
     records: [],
     mistakes: {},
@@ -113,6 +126,7 @@ export function parseProgress(raw: string | null): Progress {
   if (value.records.length > 500 || Object.keys(value.mistakes).length > 1000)
     throw new Error("记录数量超出支持范围");
   const data = emptyProgress();
+  data.course = readCourse(value.course);
   const recordIds = new Set<string>();
   for (const r of value.records) {
     if (
@@ -141,11 +155,24 @@ export function parseProgress(raw: string | null): Progress {
         Number(r.correct) < Number(r.total) * 2)
     )
       throw new Error("文章记录与完整原文不一致");
+    const course =
+      r.course === undefined ? undefined : readCourseAttempt(r.course);
+    if (
+      course &&
+      (getUnit(course.unitId).lesson !== r.lesson ||
+        (r.lesson !== "article" &&
+          !Object.values(coursePaces).some((p) => p.count === r.total)) ||
+        (r.lesson === "article" && r.articleId !== "morning") ||
+        Number(r.correct) <
+          Number(r.total) * coursePool(course.unitId)[0].answer.length)
+    )
+      throw new Error("课程记录与课后练习不匹配");
     recordIds.add(r.id);
     data.records.push({
       id: r.id,
       date: r.date,
       lesson: r.lesson as LessonId,
+      ...(course ? { course } : {}),
       ...(r.lesson === "article" ? { articleId: r.articleId as string } : {}),
       total: r.total as number,
       attempts: r.attempts as number,
@@ -211,6 +238,13 @@ export function mergeProgress(
   restoreSettings = false,
 ): Progress {
   const result = emptyProgress();
+  result.course = {
+    ...(restoreSettings ? incoming.course : local.course),
+    read: [...new Set([...local.course.read, ...incoming.course.read])],
+    completed: [
+      ...new Set([...local.course.completed, ...incoming.course.completed]),
+    ],
+  };
   result.settings = {
     ...(restoreSettings ? incoming.settings : local.settings),
   };
@@ -219,18 +253,20 @@ export function mergeProgress(
     const previous = records.get(record.id);
     if (
       previous &&
-      (
-        [
-          "date",
-          "lesson",
-          "articleId",
-          "total",
-          "attempts",
-          "correct",
-          "seconds",
-          "speed",
-        ] as const
-      ).some((k) => previous[k] !== record[k])
+      (JSON.stringify(previous.course ?? null) !==
+        JSON.stringify(record.course ?? null) ||
+        (
+          [
+            "date",
+            "lesson",
+            "articleId",
+            "total",
+            "attempts",
+            "correct",
+            "seconds",
+            "speed",
+          ] as const
+        ).some((k) => previous[k] !== record[k]))
     )
       throw new Error("备份与本机存在同编号但内容不同的记录，已取消合并");
     records.set(record.id, { ...record });

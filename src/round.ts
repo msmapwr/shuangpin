@@ -1,4 +1,9 @@
 import {
+  readCourseAttempt,
+  validCourseQueue,
+  type CourseAttempt,
+} from "./course.ts";
+import {
   lessons,
   questionsFor,
   type LessonId,
@@ -13,6 +18,7 @@ export interface RoundSnapshot {
   id: string;
   lessonId: LessonId;
   group: string;
+  course?: CourseAttempt;
   queue: Question[];
   index: number;
   typed: string;
@@ -51,6 +57,14 @@ export function parseRound(
   )
     throw new Error("未完成练习内容无效");
   const queue = s.queue.map(readQuestion) as Question[];
+  const course =
+    s.course === undefined ? undefined : readCourseAttempt(s.course);
+  if (
+    course &&
+    (!validCourseQueue(course, s.lessonId, s.group, queue) ||
+      (s.revealed && !course.assisted))
+  )
+    throw new Error("课程练习范围或提示标记无效");
   if (
     s.lessonId === "review" &&
     new Set(queue.map((q) => q.id)).size !== queue.length
@@ -58,7 +72,7 @@ export function parseRound(
     throw new Error("错题复习包含重复题目");
   if (s.lessonId === "custom" && queue.some((q) => !q.id.startsWith("custom-")))
     throw new Error("自定义练习内容无效");
-  if (s.lessonId !== "custom" && s.lessonId !== "review") {
+  if (!course && s.lessonId !== "custom" && s.lessonId !== "review") {
     const allowed = new Set(questionsFor(s.lessonId).map((q) => q.id));
     if (
       queue.some((q) => !allowed.has(q.id)) ||
@@ -114,6 +128,7 @@ export function parseRound(
     id: s.id,
     lessonId: s.lessonId,
     group: s.group,
+    ...(course ? { course } : {}),
     queue,
     index: s.index,
     typed: s.typed,

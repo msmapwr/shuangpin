@@ -2,6 +2,8 @@
 
 一个打开即可使用的小鹤双拼练习网站。练习声母、韵母、零声母、单字和高频词组，再通过错题复习巩固薄弱键位。
 
+在线使用：[GitHub Pages](https://msmapwr.github.io/shuangpin/#tutorial)
+
 ## 本地运行
 
 需要 Node.js 22.12+（或 20.19+）。
@@ -96,3 +98,13 @@ Vite、TypeScript、GSAP、Lucide。GSAP 仅用于短暂入场与纠错反馈，
 练习使用标准小鹤双拼音码，按音节顺序完整输入，不包含小鹤音形辅助码或词组简码。规则依据 [小鹤官网](https://flypy.cc/) 与 [Rime 官方小鹤方案](https://github.com/rime/rime-double-pinyin/blob/master/double_pinyin_flypy.schema.yaml)。词库采用人工标注拼音以消除多音字歧义。
 
 开发计划、设计和验收标准见 [docs/PLAN.md](docs/PLAN.md)。
+
+## GitHub Pages 发布
+
+仓库已启用 GitHub Actions 作为 Pages 来源。推送到默认分支后，Verify 先执行格式、单元测试、构建和浏览器测试，全部通过后才由 `deploy-pages` 发布 `dist/`。其他分支与 PR 只执行验证。也可以在 Actions 页面手动运行 Verify，发布仍限制在默认分支。
+
+Vite 使用相对资源路径，支持 `https://msmapwr.github.io/shuangpin/`，并继续兼容原 Sites 根地址。页面使用 hash 路由，教程直达地址是 `/#tutorial`。如需在自己的仓库复用，在 Settings → Pages 中将 Source 设为 GitHub Actions，然后推送到默认分支。
+
+GitHub Pages 与 Sites 属于两个不同的网站来源，本机学习记录不会自动共享。要继续原来的进度，先在原站点「学习记录」中导出 JSON，再到 Pages 的「学习记录」导入。
+
+工作流使用 [GitHub Pages 官方自定义工作流](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages) 中的部署操作，不需要额外的个人访问令牌或仓库 Secret。

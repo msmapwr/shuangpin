@@ -161,7 +161,9 @@ export function parseProgress(raw: string | null): Progress {
       course &&
       (getUnit(course.unitId).lesson !== r.lesson ||
         (r.lesson !== "article" &&
-          !Object.values(coursePaces).some((p) => p.count === r.total)) ||
+          (getUnit(course.unitId).fullPool
+            ? r.total !== coursePool(course.unitId).length
+            : !Object.values(coursePaces).some((p) => p.count === r.total))) ||
         (r.lesson === "article" && r.articleId !== "morning") ||
         Number(r.correct) <
           Number(r.total) * coursePool(course.unitId)[0].answer.length)

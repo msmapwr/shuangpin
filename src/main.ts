@@ -1,3 +1,4 @@
+import { memoryDetailHTML } from "./keymap.ts";
 import {
   courseUnits,
   getUnit,
@@ -549,7 +550,7 @@ function keyboardHTML(reference = false) {
             const initial = Object.entries(INITIALS).find(
               ([p, v]) => v === k && p.length > 1,
             )?.[0];
-            return `<button class="key" type="button" data-key="${k}" aria-label="${k.toUpperCase()}${initial ? `，声母 ${initial}` : ""}，韵母 ${finals.join("、") || "无"}"><span class="key-letter">${k.toUpperCase()}</span><span class="key-mapping">${finals.join(" / ")}</span>${initial ? `<span class="key-initial">${initial}</span>` : ""}</button>`;
+            return `<button class="key" type="button" data-key="${k}" aria-label="${!reference && activeCourse?.mode === "check" ? k.toUpperCase() : `${k.toUpperCase()}${initial ? `，声母 ${initial}` : ""}，韵母 ${finals.join("、") || "无"}`}"><span class="key-letter">${k.toUpperCase()}</span><span class="key-mapping">${finals.join(" / ")}</span>${initial ? `<span class="key-initial">${initial}</span>` : ""}</button>`;
           })
           .join("")}</div>`,
     )
@@ -883,7 +884,7 @@ function practiceHTML() {
   ${!activeCourse ? courseInviteHTML() : ""}<div class="content-grid"><div class="practice-column"><section class="practice-panel" aria-label="练习台"><div class="panel-toolbar"><div class="lesson-tabs" role="group" aria-label="基础练习类型">${lessonTabsHTML()}</div><button class="icon-button" data-action="settings" aria-label="练习设置">${icon("SlidersHorizontal")}</button></div>
   ${trainingContextHTML()}<div class="session-stats"><div><span class="stat-label">本轮进度</span><strong><span id="round-progress">0</span><small> / ${queue.length}</small></strong></div><div><span class="stat-label">准确率</span><strong id="accuracy">—</strong></div><div><span class="stat-label">练习用时</span><strong id="timer">00:00</strong></div><div><span class="stat-label">连续答对</span><strong><span id="streak">0</span><small> 题</small></strong></div></div><div class="round-track"><div id="round-fill"></div></div>
   ${queue.length ? `<div class="exercise"><div class="exercise-topline"><span class="lesson-caption">${icon(lesson().icon)} ${lesson().title}</span><button class="mode-switch" data-action="mode" ${activeCourse ? "disabled" : ""} aria-pressed="${!hintsEnabled()}">${icon(hintsEnabled() ? "Eye" : "EyeOff")} ${hintsEnabled() ? "引导模式" : "盲打模式"} ${icon("ChevronDown")}</button></div>${lessonId === "article" ? articleContextHTML() : ""}<div class="question-content"></div><div class="answer-entry"><label class="sr-only" for="typing-input">输入当前题目的小鹤双拼编码</label><input id="typing-input" class="typing-input" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="input-help input-feedback" aria-label="输入当前题目的小鹤双拼编码"><div class="answer-slots" aria-hidden="true"></div></div><p id="input-help" class="input-help">切换到英文输入法，按下对应字母键</p><p id="input-feedback" class="input-feedback" role="status" aria-live="polite"></p><div class="exercise-controls"><button class="text-button" data-action="hint">${icon("Lightbulb")} 显示提示</button><span class="control-divider"></span><button class="text-button" data-action="pause" id="pause-button">${icon("Pause")} 暂停</button><span class="control-divider"></span><button class="text-button" data-action="restart">${icon("RotateCcw")} 重新开始</button></div></div>` : `<div class="empty-state">${icon("CircleCheck")}<h2>${lessonId === "custom" ? "先添加你想练习的词组" : "暂时没有需要复习的题目"}</h2><p>${lessonId === "custom" ? "在我的词库填写词组与拼音，就能生成专属练习。" : "练习中出现的错题会自动收集到这里。"}</p><button class="primary-button" ${lessonId === "custom" ? 'data-page="library"' : 'data-lesson="initials"'}>${lessonId === "custom" ? "前往我的词库" : "开始声母练习"}</button></div>`}
-  <div class="keyboard-area"><div class="keyboard-heading"><span>键位就在手边</span><div class="keyboard-legend"><span><b class="legend-initial"></b>声母</span><span><b class="legend-final"></b>韵母</span><button data-page="reference" aria-label="查看完整键位图">${icon("Expand")}</button></div></div>${keyboardHTML()}<div class="keyboard-foot"><span>${icon("Info")} 也可以点击屏幕键盘练习</span><span><kbd>Esc</kbd> 暂停 / 继续</span></div></div></section>
+  <div class="keyboard-area ${activeCourse?.mode === "check" ? "keyboard-concealed" : ""}"><div class="keyboard-heading"><span>键位就在手边</span><div class="keyboard-legend"><span><b class="legend-initial"></b>声母</span><span><b class="legend-final"></b>韵母</span><button data-page="reference" aria-label="查看完整键位图">${icon("Expand")}</button></div></div>${keyboardHTML()}<div class="keyboard-foot"><span>${icon("Info")} 也可以点击屏幕键盘练习</span><span><kbd>Esc</kbd> 暂停 / 继续</span></div></div></section>
   <section class="next-section"><div class="section-title"><h2>打好基础，再向前一步</h2><span>按自己的节奏学习</span></div><div class="next-lessons">${lessons
     .slice(2, 5)
     .map(
@@ -1065,9 +1066,16 @@ function confirmRestart() {
 }
 document.addEventListener("click", (e) => {
   const target = (e.target as Element).closest<HTMLElement>(
-    "[data-action],[data-page],[data-lesson],[data-key],[data-article],[data-unit],[data-course-start],[data-course-read]",
+    "[data-action],[data-page],[data-lesson],[data-key],[data-article],[data-unit],[data-course-start],[data-course-read],[data-memory-key]",
   );
   if (!target) return;
+  if (target.dataset.memoryKey) {
+    document
+      .querySelectorAll<HTMLElement>("[data-memory-key]")
+      .forEach((el) => el.setAttribute("aria-pressed", String(el === target)));
+    $("#memory-detail").innerHTML = memoryDetailHTML(target.dataset.memoryKey);
+    return;
+  }
   if (target.dataset.unit) {
     visitUnit(target.dataset.unit);
     return;

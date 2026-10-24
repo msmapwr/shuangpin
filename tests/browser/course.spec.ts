@@ -52,7 +52,7 @@ test("tutorial separates reading from assessment and saves pace without changing
 }) => {
   await setup(page);
   await expect(page.locator("#course-title")).toHaveText("先打出「你好」");
-  await expect(page.locator(".course-outline nav button")).toHaveCount(8);
+  await expect(page.locator(".course-outline nav button")).toHaveCount(13);
   await expect(page.locator(".course-lesson")).toContainText(
     "你已经知道每个字母在哪个键上",
   );

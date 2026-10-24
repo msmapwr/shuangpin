@@ -44,7 +44,7 @@ const record = (
 });
 
 test("course examples teach verified Flypy codes and every task is a canonical nonempty question", () => {
-  assert.equal(courseUnits.length, 8);
+  assert.equal(courseUnits.length, 13);
   for (const unit of courseUnits) {
     for (const example of unit.examples) {
       const expected =
@@ -62,9 +62,11 @@ test("course examples teach verified Flypy codes and every task is a canonical n
       const queue = courseQueue(unit.id, pace, false);
       assert.equal(
         queue.length,
-        unit.id === "sentences"
-          ? 59
-          : { light: 10, steady: 20, extra: 30 }[pace],
+        unit.fullPool
+          ? pool.length
+          : unit.id === "sentences"
+            ? 59
+            : { light: 10, steady: 20, extra: 30 }[pace],
       );
       assert.equal(
         validCourseQueue(

@@ -3937,3 +3937,123 @@ td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.memory-map {
+  margin: 28px 0;
+  padding: 20px;
+  background: #f6f8fc;
+  border: 1px solid #e0e6f1;
+  border-radius: 12px;
+  min-width: 0;
+}
+.memory-map > h3 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+.memory-map > p {
+  color: #536079;
+  font-size: 13px;
+  line-height: 1.9;
+  margin: 0 0 18px;
+}
+.memory-keyboard {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 3px 2px 12px;
+  overscroll-behavior-x: contain;
+}
+.memory-key-row {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  min-width: 520px;
+  margin: 7px 0;
+}
+.memory-keycap {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  flex: 1;
+  max-width: 58px;
+  min-width: 44px;
+  min-height: 74px;
+  gap: 7px;
+  background: #fff;
+  border: 1px solid #d8dfec;
+  border-bottom-width: 3px;
+  border-radius: 7px;
+  color: #4e5c76;
+}
+.memory-keycap > strong {
+  font-size: 15px;
+}
+.memory-keycap > span {
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.memory-keycap > small {
+  font-size: 10px;
+  color: #6654b0;
+}
+.memory-keycap[aria-pressed="true"] {
+  border-color: #7987e7;
+  background: #eef1ff;
+  color: #3f50b6;
+}
+.memory-detail {
+  margin-top: 12px;
+  padding: 18px;
+  background: #fff;
+  border-left: 3px solid #7987e7;
+  border-radius: 7px;
+}
+.memory-detail > div {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.memory-detail strong {
+  font-size: 16px;
+}
+.memory-detail span {
+  font-size: 13px;
+  color: #52617b;
+}
+.memory-detail p {
+  font-size: 14px;
+  line-height: 1.9;
+  color: #3c4964;
+  margin: 12px 0 0;
+}
+.memory-example kbd {
+  color: #4656c1;
+  padding: 4px 7px;
+  border: 1px solid #dfe4fa;
+  border-radius: 4px;
+}
+@media (min-width: 1000px) {
+  .course-outline {
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+  }
+}
+@media (max-width: 760px) {
+  .memory-map {
+    padding: 16px 12px;
+  }
+  .memory-map > h3 {
+    font-size: 16px;
+  }
+  .memory-detail {
+    padding: 14px;
+  }
+}
+
+.keyboard-concealed .key-mapping,
+.keyboard-concealed .key-initial {
+  visibility: hidden;
+}

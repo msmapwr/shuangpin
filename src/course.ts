@@ -1,3 +1,4 @@
+import { memoryUnits } from "./memory-course.ts";
 import {
   questionsFor,
   questionsForArticle,
@@ -22,6 +23,7 @@ export interface CourseState {
 }
 export interface CourseUnit {
   id: string;
+  fullPool?: boolean;
   title: string;
   summary: string;
   lesson: LessonId;
@@ -368,6 +370,7 @@ export const courseUnits: CourseUnit[] = [
       { source: "syllables", values: ["lv", "nv", "qu", "yu", "xue", "jue"] },
     ],
   },
+  ...memoryUnits,
   {
     id: "words",
     title: "把两键连成词组",
@@ -516,7 +519,11 @@ export function courseQueue(
     pool = coursePool(id);
   return unit.lesson === "article"
     ? pool
-    : makeQueue(pool, coursePaces[pace].count, random);
+    : makeQueue(
+        pool,
+        unit.fullPool ? pool.length : coursePaces[pace].count,
+        random,
+      );
 }
 export function readCourse(value: unknown): CourseState {
   if (value === undefined) return emptyCourse();
@@ -570,6 +577,12 @@ export function validCourseQueue(
   if (lesson === "article")
     return (
       queue.length === pool.length && queue.every((q, i) => q.id === pool[i].id)
+    );
+  if (unit.fullPool)
+    return (
+      queue.length === pool.length &&
+      new Set(queue.map((q) => q.id)).size === pool.length &&
+      queue.every((q) => pool.some((allowed) => allowed.id === q.id))
     );
   return (
     [10, 20, 30].includes(queue.length) &&
